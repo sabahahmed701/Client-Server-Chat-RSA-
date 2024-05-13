@@ -1,0 +1,65 @@
+#client.py
+import tkinter as tk
+from tkinter import scrolledtext
+import socket
+from threading import Thread
+from Crypto.PublicKey import RSA
+from Crypto.Cipher import PKCS1_OAEP
+
+def generate_rsa_key_pair():
+    key = RSA.generate(2048)
+    return key, key.publickey()
+
+def encrypt_message(message, key):
+    cipher_rsa = PKCS1_OAEP.new(key)
+    encrypted_message = cipher_rsa.encrypt(message.encode("utf-8"))
+    return encrypted_message
+
+def decrypt_message(encrypted_message, key):
+    decipher_rsa = PKCS1_OAEP.new(key)
+    decrypted_message = decipher_rsa.decrypt(encrypted_message)
+    return decrypted_message.decode("utf-8")
+
+def send_message():
+    message = my_message.get()
+    text_area.insert(tk.END, "Client: " + message + "\n")
+    encrypted_message = encrypt_message(message, server_public_key)
+    text_area.insert(tk.END, "Client (Encrypted): " + encrypted_message.hex() + "\n") 
+    client_socket.send(encrypted_message)
+    my_message.set("")
+
+def receive_messages():
+    while True:
+        try:
+            encrypted_message = client_socket.recv(2048)
+            message = decrypt_message(encrypted_message, private_key)
+            text_area.insert(tk.END, "Server: " + message + "\n")  
+        except OSError:
+            break
+
+root = tk.Tk()
+root.title("Client")
+
+text_area = scrolledtext.ScrolledText(root)
+text_area.pack(side=tk.TOP, fill=tk.BOTH, expand=tk.YES)
+
+my_message = tk.StringVar()
+entry_field = tk.Entry(root, textvariable=my_message)
+entry_field.pack(side=tk.BOTTOM, fill=tk.BOTH, expand=tk.YES)
+
+send_button = tk.Button(root, text="Send", command=send_message)
+send_button.pack(side=tk.BOTTOM)
+
+client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+client_socket.connect(('127.0.0.1', 12345))
+
+private_key, public_key = generate_rsa_key_pair()
+client_socket.sendall(public_key.exportKey(format='PEM'))
+
+server_public_key_pem = client_socket.recv(4096)
+server_public_key = RSA.import_key(server_public_key_pem)
+
+receive_thread = Thread(target=receive_messages)
+receive_thread.start()
+
+tk.mainloop()
